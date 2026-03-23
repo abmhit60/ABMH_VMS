@@ -4,7 +4,8 @@ import{
   Users,LogOut,RefreshCw,Search,Plus,CheckCircle,
   Clock,AlertTriangle,Download,Filter,ChevronDown,
   User,Building,Phone,FileText,Shield,BarChart2,
-  ArrowLeft,Printer,X,Check,Eye,Calendar,Hash
+  ArrowLeft,Printer,X,Check,Eye,Calendar,Hash,
+  MessageCircle,QrCode,ThumbsUp,ThumbsDown,Send
 }from"lucide-react";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -106,9 +107,10 @@ function ErrBox({msg}){return<div style={{background:"#fff0f0",border:"1.5px sol
 
 function StatusBadge({status}){
   const cfg={
-    inside: {color:"#16a34a",bg:"#f0fdf4",label:"Inside"},
+    inside:       {color:"#16a34a",bg:"#f0fdf4",label:"✅ Inside"},
     "checked-out":{color:"#6b7280",bg:"#f3f4f6",label:"Checked Out"},
-    pending:{color:"#d97706",bg:"#fffbeb",label:"Pending"},
+    pending:      {color:"#d97706",bg:"#fffbeb",label:"⏳ Pending Approval"},
+    rejected:     {color:RED,      bg:"#fff0f0",label:"❌ Rejected"},
   };
   const c=cfg[status]||{color:"#6b7280",bg:"#f3f4f6",label:status};
   return<span style={{background:c.bg,color:c.color,fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:6,border:`1px solid ${c.color}20`}}>{c.label}</span>;
@@ -166,6 +168,281 @@ function VisitorBadge({visitor,onClose}){
           <button onClick={()=>window.print()} style={{...BTN_GHOST,flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><Printer size={14}/>Print</button>
           <button onClick={onClose} style={{...BTN_PRIMARY,flex:1}}>Done</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── QR Code Generator (using Google Charts API) ─────────────────────────────
+function QRCode({value,size=200}){
+  const url=`https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(value)}&bgcolor=ffffff&color=1a1a2e&margin=10`;
+  return<img src={url} alt="QR Code" style={{width:size,height:size,borderRadius:12,border:"1px solid #e5e7eb"}}/>;
+}
+
+// ─── Registration Success + WhatsApp Share ────────────────────────────────────
+function RegistrationSuccess({visitor,onDone}){
+  const [hostMobile,setHostMobile]=useState("");
+  const [sending,setSending]=useState(false);
+  const [sent,setSent]=useState(false);
+
+  const BASE_URL=window.location.origin;
+  const approvalUrl=`${BASE_URL}?approve=${visitor.visitor_id}&token=${visitor.approval_token}`;
+  const visitorPassUrl=`${BASE_URL}?pass=${visitor.visitor_id}`;
+
+  const type=VISITOR_TYPES[visitor.visitor_type]||{};
+
+  // WhatsApp message to host
+  const waMsg=`🏥 *ABMH Visitor Management*\n\nA visitor is waiting to meet you:\n\n👤 *${visitor.name}*\n🏭 ${visitor.company||"—"}\n📋 ${type.icon} ${type.label}\n💬 Purpose: ${visitor.purpose}\n🪪 ${visitor.id_type}: ${visitor.id_number}\n\n*Please approve or reject their entry:*\n✅ APPROVE: ${approvalUrl}&action=approve\n❌ REJECT: ${approvalUrl}&action=reject\n\n_Pass ID: ${visitor.visitor_id}_`;
+
+  function openWhatsApp(mobile){
+    const num=mobile?`91${mobile.replace(/\D/g,"").slice(-10)}`:"";
+    const url=num
+      ?`https://wa.me/${num}?text=${encodeURIComponent(waMsg)}`
+      :`https://wa.me/?text=${encodeURIComponent(waMsg)}`;
+    window.open(url,"_blank");
+    setSent(true);
+  }
+
+  return(
+    <div style={{padding:20,maxWidth:480,margin:"0 auto"}}>
+      {/* Success banner */}
+      <div className="fu" style={{background:"#fffbeb",border:"1.5px solid #fde68a",borderRadius:14,padding:"14px 20px",marginBottom:16,textAlign:"center"}}>
+        <p style={{color:"#92400e",fontWeight:800,fontSize:15}}>⏳ Awaiting Host Approval</p>
+        <p style={{color:"#92400e",fontSize:12,marginTop:3}}>Pass: <strong>{visitor.visitor_id}</strong> · Visitor must wait at reception</p>
+      </div>
+
+      {/* QR Code for visitor */}
+      <div style={{background:"#fff",border:"1.5px solid #e5e7eb",borderRadius:16,padding:20,marginBottom:16,textAlign:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+        <p style={{color:"#1a1a2e",fontWeight:700,fontSize:14,marginBottom:4}}>📱 Visitor Pass QR</p>
+        <p style={{color:"#9ca3af",fontSize:12,marginBottom:14}}>Ask visitor to scan — opens their pass on phone</p>
+        <div style={{display:"flex",justifyContent:"center",marginBottom:12}}>
+          <QRCode value={visitorPassUrl} size={180}/>
+        </div>
+        <p style={{color:"#6b7280",fontSize:11}}>{visitorPassUrl}</p>
+      </div>
+
+      {/* Send WhatsApp to host */}
+      <div style={{background:"#fff",border:"1.5px solid #e5e7eb",borderRadius:16,padding:20,marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+        <p style={{color:"#1a1a2e",fontWeight:700,fontSize:14,marginBottom:4}}>📲 Notify Host for Approval</p>
+        <p style={{color:"#9ca3af",fontSize:12,marginBottom:14}}>Send WhatsApp to <strong>{visitor.host_name}</strong> ({visitor.department}) with approve/reject link</p>
+
+        <div style={{marginBottom:12}}>
+          <p style={{color:"#6b7280",fontSize:11,fontWeight:600,marginBottom:4}}>HOST MOBILE (optional — for direct message)</p>
+          <div style={{display:"flex",gap:8}}>
+            <input style={{...INP,flex:1}} placeholder="Host's mobile number" value={hostMobile} onChange={e=>setHostMobile(e.target.value.replace(/\D/g,"").slice(0,10))} type="tel"/>
+            <button onClick={()=>openWhatsApp(hostMobile)} style={{...BTN_PRIMARY,background:"#25D366",padding:"10px 14px",display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
+              <MessageCircle size={16}/>{hostMobile?"Send":"Share"}
+            </button>
+          </div>
+        </div>
+
+        {sent&&<div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 12px",color:"#16a34a",fontSize:12,fontWeight:600}}>✅ WhatsApp opened! Waiting for host response...</div>}
+      </div>
+
+      {/* Approval status — auto polls */}
+      <ApprovalPoller visitorId={visitor.visitor_id} onApproved={onDone} onRejected={onDone}/>
+
+      <button onClick={onDone} style={{...BTN_GHOST,width:"100%",marginTop:8}}>← Back to Active Visitors</button>
+    </div>
+  );
+}
+
+// ─── Approval Poller — watches DB for host response ──────────────────────────
+function ApprovalPoller({visitorId,onApproved,onRejected}){
+  const [status,setStatus]=useState("pending");
+  const [checking,setChecking]=useState(false);
+
+  useEffect(()=>{
+    const iv=setInterval(async()=>{
+      try{
+        const rows=await sbGet("vms_visitors",`visitor_id=eq.${visitorId}&select=status`);
+        if(rows.length>0&&rows[0].status!=="pending"){
+          setStatus(rows[0].status);
+          clearInterval(iv);
+          if(rows[0].status==="inside")setTimeout(onApproved,2000);
+          if(rows[0].status==="rejected")setTimeout(onRejected,2000);
+        }
+      }catch{}
+    },4000);
+    return()=>clearInterval(iv);
+  },[visitorId]);
+
+  if(status==="inside") return(
+    <div style={{background:"#f0fdf4",border:"1.5px solid #bbf7d0",borderRadius:12,padding:16,textAlign:"center"}}>
+      <p style={{fontSize:28,marginBottom:6}}>✅</p>
+      <p style={{color:"#16a34a",fontWeight:800,fontSize:16}}>Approved! Visitor may enter.</p>
+    </div>
+  );
+
+  if(status==="rejected") return(
+    <div style={{background:"#fff0f0",border:"1.5px solid #fca5a5",borderRadius:12,padding:16,textAlign:"center"}}>
+      <p style={{fontSize:28,marginBottom:6}}>❌</p>
+      <p style={{color:RED,fontWeight:800,fontSize:16}}>Entry Rejected by Host</p>
+      <p style={{color:"#6b7280",fontSize:12,marginTop:4}}>Please inform the visitor and ask them to leave.</p>
+    </div>
+  );
+
+  return(
+    <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:12,padding:14,display:"flex",alignItems:"center",gap:10}}>
+      <div style={{width:20,height:20,border:"2px solid #d97706",borderTop:"2px solid transparent",borderRadius:"50%",animation:"spin 0.8s linear infinite",flexShrink:0}}/>
+      <div>
+        <p style={{color:"#92400e",fontWeight:700,fontSize:13}}>Waiting for host approval...</p>
+        <p style={{color:"#b45309",fontSize:11,marginTop:2}}>Checking every 4 seconds</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Approval Page — opens when host clicks WhatsApp link ─────────────────────
+function ApprovalPage({visitorId,token,action}){
+  const [visitor,setVisitor]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [done,setDone]=useState(false);
+  const [err,setErr]=useState("");
+
+  useEffect(()=>{
+    loadVisitor();
+    // Auto-action if action param present
+  },[]);
+
+  async function loadVisitor(){
+    try{
+      const rows=await sbGet("vms_visitors",`visitor_id=eq.${visitorId}`);
+      if(rows.length>0){
+        setVisitor(rows[0]);
+        // If action in URL, auto-process
+        if(action==="approve"&&rows[0].status==="pending") await processAction("inside",rows[0]);
+        if(action==="reject"&&rows[0].status==="pending") await processAction("rejected",rows[0]);
+      } else setErr("Visitor not found.");
+    }catch(e){setErr("Failed to load.");}
+    setLoading(false);
+  }
+
+  async function processAction(newStatus,v){
+    const vis=v||visitor;
+    if(!vis||vis.approval_token!==token){setErr("Invalid or expired link.");return;}
+    if(vis.status!=="pending"){setDone(true);return;}
+    try{
+      await sbPatch("vms_visitors",`visitor_id=eq.${visitorId}&approval_token=eq.${token}`,{
+        status:newStatus,
+        ...(newStatus==="inside"?{check_in:new Date().toISOString()}:{})
+      });
+      setVisitor(v=>({...v,status:newStatus}));
+      setDone(newStatus);
+    }catch(e){setErr("Action failed.");}
+  }
+
+  if(loading)return<div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><Spinner/></div>;
+
+  const type=visitor?VISITOR_TYPES[visitor.visitor_type]||{}:{};
+
+  return(
+    <div style={{minHeight:"100vh",background:"#f5f6fa",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{width:"100%",maxWidth:380}}>
+        <div style={{textAlign:"center",marginBottom:20}}>
+          <img src="/abmh-logo-1.png" alt="ABMH" style={{height:40,objectFit:"contain",marginBottom:8}}/>
+          <p style={{color:"#1a1a2e",fontWeight:800,fontSize:16}}>Visitor Entry Approval</p>
+        </div>
+
+        {err&&<ErrBox msg={err}/>}
+
+        {done==="inside"&&(
+          <div style={{background:"#f0fdf4",border:"1.5px solid #bbf7d0",borderRadius:16,padding:24,textAlign:"center"}}>
+            <p style={{fontSize:40,marginBottom:8}}>✅</p>
+            <p style={{color:"#16a34a",fontWeight:800,fontSize:18}}>Entry Approved!</p>
+            <p style={{color:"#166534",fontSize:13,marginTop:6}}>Visitor has been allowed inside. Reception has been notified.</p>
+          </div>
+        )}
+
+        {done==="rejected"&&(
+          <div style={{background:"#fff0f0",border:"1.5px solid #fca5a5",borderRadius:16,padding:24,textAlign:"center"}}>
+            <p style={{fontSize:40,marginBottom:8}}>❌</p>
+            <p style={{color:RED,fontWeight:800,fontSize:18}}>Entry Rejected</p>
+            <p style={{color:"#6b7280",fontSize:13,marginTop:6}}>The visitor has been turned away. Reception has been notified.</p>
+          </div>
+        )}
+
+        {!done&&visitor&&(
+          <div style={{background:"#fff",borderRadius:16,padding:20,boxShadow:"0 4px 20px rgba(0,0,0,0.1)"}}>
+            {visitor.status!=="pending"?(
+              <div style={{textAlign:"center",padding:12}}>
+                <p style={{color:"#6b7280",fontSize:14}}>This request has already been {visitor.status==="inside"?"approved":"rejected"}.</p>
+              </div>
+            ):(
+              <>
+                <div style={{background:"#f9fafb",borderRadius:10,padding:14,marginBottom:16}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                    <span style={{fontSize:28}}>{type.icon}</span>
+                    <div>
+                      <p style={{color:"#1a1a2e",fontWeight:800,fontSize:16}}>{visitor.name}</p>
+                      <p style={{color:"#6b7280",fontSize:12}}>{visitor.company||"—"}</p>
+                    </div>
+                  </div>
+                  {[["Purpose",visitor.purpose],["Department",visitor.department],["ID",`${visitor.id_type}: ${visitor.id_number}`],["Registered",fmt(visitor.check_in)]].map(([k,v])=>(
+                    <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #f3f4f6"}}>
+                      <span style={{color:"#9ca3af",fontSize:12}}>{k}</span>
+                      <span style={{color:"#374151",fontSize:12,fontWeight:600,textAlign:"right",maxWidth:200}}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+                <p style={{color:"#374151",fontSize:13,fontWeight:600,marginBottom:12,textAlign:"center"}}>Do you approve this visitor's entry?</p>
+                <div style={{display:"flex",gap:10}}>
+                  <button onClick={()=>processAction("rejected")} style={{flex:1,padding:"14px",borderRadius:12,border:"2px solid #fca5a5",background:"#fff0f0",color:RED,fontWeight:800,fontSize:15,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+                    <ThumbsDown size={18}/>Reject
+                  </button>
+                  <button onClick={()=>processAction("inside")} style={{flex:1,padding:"14px",borderRadius:12,border:"none",background:"#16a34a",color:"#fff",fontWeight:800,fontSize:15,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+                    <ThumbsUp size={18}/>Approve
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Visitor Pass Page — opens when visitor scans QR ─────────────────────────
+function VisitorPassPage({visitorId}){
+  const [visitor,setVisitor]=useState(null);
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    sbGet("vms_visitors",`visitor_id=eq.${visitorId}`)
+      .then(rows=>setVisitor(rows[0]||null))
+      .catch(()=>{})
+      .finally(()=>setLoading(false));
+    // Poll for status updates
+    const iv=setInterval(()=>{
+      sbGet("vms_visitors",`visitor_id=eq.${visitorId}&select=status`).then(rows=>{
+        if(rows[0])setVisitor(v=>({...v,status:rows[0].status}));
+      }).catch(()=>{});
+    },5000);
+    return()=>clearInterval(iv);
+  },[visitorId]);
+
+  if(loading)return<div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><Spinner/></div>;
+  if(!visitor)return<div style={{padding:32,textAlign:"center",color:"#9ca3af"}}>Pass not found.</div>;
+
+  const type=VISITOR_TYPES[visitor.visitor_type]||{};
+  const statusMsg={
+    pending:{icon:"⏳",color:"#d97706",bg:"#fffbeb",text:"Waiting for host approval..."},
+    inside:{icon:"✅",color:"#16a34a",bg:"#f0fdf4",text:"Entry Approved — You may proceed!"},
+    rejected:{icon:"❌",color:RED,bg:"#fff0f0",text:"Entry has been rejected."},
+    "checked-out":{icon:"👋",color:"#6b7280",bg:"#f3f4f6",text:"Visit completed. Thank you!"},
+  };
+  const s=statusMsg[visitor.status]||statusMsg.pending;
+
+  return(
+    <div style={{minHeight:"100vh",background:"#f5f6fa",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{width:"100%",maxWidth:360}}>
+        <div style={{background:s.bg,border:`1.5px solid ${s.color}30`,borderRadius:14,padding:"14px 20px",textAlign:"center",marginBottom:16}}>
+          <p style={{fontSize:28}}>{s.icon}</p>
+          <p style={{color:s.color,fontWeight:800,fontSize:15,marginTop:4}}>{s.text}</p>
+          {visitor.status==="pending"&&<p style={{color:s.color,fontSize:11,marginTop:4}}>This page updates automatically</p>}
+        </div>
+        <VisitorBadge visitor={visitor} onClose={()=>{}}/>
       </div>
     </div>
   );
@@ -292,7 +569,8 @@ function RegisterVisitor({onDone}){
         host_name:form.host_name.trim(),
         purpose:form.purpose.trim(),
         items_carried:form.items_carried.trim(),
-        status:"inside",
+        status:"pending",
+        approval_token:Math.random().toString(36).slice(2,10).toUpperCase(),
         check_in:new Date().toISOString(),
         check_out:null,
       };
@@ -303,15 +581,7 @@ function RegisterVisitor({onDone}){
   }
 
   if(registered){
-    return(
-      <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:20,gap:16}}>
-        <div className="fu" style={{background:"#f0fdf4",border:"1.5px solid #bbf7d0",borderRadius:14,padding:"14px 20px",width:"100%",maxWidth:400,textAlign:"center"}}>
-          <p style={{color:"#16a34a",fontWeight:800,fontSize:16}}>✅ Visitor Registered!</p>
-          <p style={{color:"#166534",fontSize:13,marginTop:4}}>Pass: {registered.visitor_id}</p>
-        </div>
-        <VisitorBadge visitor={registered} onClose={onDone}/>
-      </div>
-    );
+    return <RegistrationSuccess visitor={registered} onDone={onDone}/>;
   }
 
   return(
@@ -967,6 +1237,18 @@ export default function App(){
   });
   function login(u){try{sessionStorage.setItem("abmh_vms_user",JSON.stringify(u));}catch{}setUser(u);}
   function logout(){try{sessionStorage.removeItem("abmh_vms_user");}catch{}setUser(null);}
+
+  // Check URL params for approval or pass page
+  const params=new URLSearchParams(window.location.search);
+  const approveId=params.get("approve");
+  const approveToken=params.get("token");
+  const approveAction=params.get("action");
+  const passId=params.get("pass");
+
+  // Approval page — no login needed
+  if(approveId&&approveToken) return<ApprovalPage visitorId={approveId} token={approveToken} action={approveAction}/>;
+  // Visitor pass page — no login needed
+  if(passId) return<VisitorPassPage visitorId={passId}/>;
 
   if(!user)return<LoginScreen onLogin={login}/>;
   if(user.role==="reception")return<ReceptionApp onLogout={logout}/>;
