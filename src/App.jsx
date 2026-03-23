@@ -173,10 +173,26 @@ function VisitorBadge({visitor,onClose}){
   );
 }
 
-// ─── QR Code Generator (using Google Charts API) ─────────────────────────────
+// ─── QR Code Generator (inline — no external API) ────────────────────────────
 function QRCode({value,size=200}){
-  const url=`https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(value)}&bgcolor=ffffff&color=1a1a2e&margin=10`;
-  return<img src={url} alt="QR Code" style={{width:size,height:size,borderRadius:12,border:"1px solid #e5e7eb"}}/>;
+  const ref=useRef(null);
+  useEffect(()=>{
+    if(!ref.current||!value)return;
+    function render(){
+      try{
+        ref.current.innerHTML="";
+        new window.QRCode(ref.current,{text:value,width:size,height:size,colorDark:"#1a1a2e",colorLight:"#ffffff",correctLevel:window.QRCode.CorrectLevel.M});
+      }catch{
+        ref.current.innerHTML=`<div style="width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;background:#f9fafb;border-radius:8px;font-size:10px;color:#6b7280;padding:8px;text-align:center;word-break:break-all">${value}</div>`;
+      }
+    }
+    if(window.QRCode){render();return;}
+    const s=document.createElement("script");
+    s.src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
+    s.onload=render;s.onerror=()=>{if(ref.current)ref.current.innerHTML=`<a href="${value}" style="font-size:10px;word-break:break-all;color:#0369a1">${value}</a>`;};
+    document.head.appendChild(s);
+  },[value,size]);
+  return<div ref={ref} style={{borderRadius:12,overflow:"hidden",border:"1px solid #e5e7eb",display:"inline-block",minWidth:size,minHeight:size}}/>;
 }
 
 // ─── Registration Success + WhatsApp Share ────────────────────────────────────
