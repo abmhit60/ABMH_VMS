@@ -478,32 +478,47 @@ const VAPID_KEY="BE6Zayo3RFuXx1dQ_3HQ0HFytM9n7ta1QEF7pHGPpUbGpVqAhkgDYV9M0uLcJYR
 // Initialize Firebase + get FCM token
 async function initFCM(){
   try{
-    // Load Firebase SDK dynamically
-    if(!window.firebase){
-      await loadScript("https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js");
-      await loadScript("https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js");
-    }
-    window.firebase.initializeApp(FIREBASE_CONFIG);
-    const messaging=window.firebase.messaging();
-    // Request permission
+    // Request permission first
     const permission=await Notification.requestPermission();
-    if(permission!=="granted")return null;
-    // Get FCM token
+    console.log("Notification permission:",permission);
+    if(permission!=="granted"){
+      console.warn("Notification permission denied");
+      return null;
+    }
+
+    // Load Firebase compat SDK from CDN
+    if(!window._fbLoaded){
+      await new Promise((res,rej)=>{
+        const s1=document.createElement("script");
+        s1.src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js";
+        s1.onload=()=>{
+          const s2=document.createElement("script");
+          s2.src="https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js";
+          s2.onload=()=>{window._fbLoaded=true;res();};
+          s2.onerror=rej;
+          document.head.appendChild(s2);
+        };
+        s1.onerror=rej;
+        document.head.appendChild(s1);
+      });
+    }
+
+    // Initialize app (avoid duplicate)
+    let app;
+    try{
+      app=window.firebase.app();
+    }catch{
+      app=window.firebase.initializeApp(FIREBASE_CONFIG);
+    }
+
+    const messaging=window.firebase.messaging(app);
     const token=await messaging.getToken({vapidKey:VAPID_KEY});
+    console.log("FCM Token obtained:",token?token.slice(0,20)+"...":"null");
     return token;
   }catch(e){
-    console.warn("FCM init failed:",e);
+    console.error("FCM init failed:",e.message||e);
     return null;
   }
-}
-
-function loadScript(src){
-  return new Promise((res,rej)=>{
-    if(document.querySelector(`script[src="${src}"]`)){res();return;}
-    const s=document.createElement("script");
-    s.src=src;s.onload=res;s.onerror=rej;
-    document.head.appendChild(s);
-  });
 }
 
 // Save FCM token to Supabase linked to host employee ID
@@ -521,26 +536,34 @@ async function saveFCMToken(empId,token){
 // Send push notification via Supabase Edge Function (or direct FCM)
 async function sendPushToHost(department,hostName,visitorName,visitorId){
   try{
-    // Get host tokens for this department
-    const rows=await sbGet("vms_hosts",`department=eq.${encodeURIComponent(department)}`);
-    const hostRow=rows.find(h=>h.name.toLowerCase().includes(hostName.toLowerCase().split(" ")[0].toLowerCase()));
-    if(!hostRow)return;
+    console.log("sendPushToHost called:",{department,hostName,visitorName,visitorId});
     
-    const tokens=await sbGet("vms_fcm_tokens",`employee_id=eq.${hostRow.employee_id}`);
-    if(!tokens.length)return;
+    // Get ALL tokens for hosts in this department
+    const hosts=await sbGet("vms_hosts",`department=eq.${encodeURIComponent(department)}`);
+    console.log("Hosts found:",hosts.length, hosts.map(h=>h.name));
     
-    // Send via FCM REST API using our edge function proxy
-    await fetch(`${SUPABASE_URL}/functions/v1/send-push`,{
-      method:"POST",
-      headers:{...HEADERS,"Content-Type":"application/json"},
-      body:JSON.stringify({
-        token:tokens[0].token,
-        title:"🏥 Visitor Approval Required",
-        body:`${visitorName} is waiting to meet you`,
-        data:{visitor_id:visitorId,type:"approval_request"}
-      })
-    });
-  }catch(e){console.warn("Push send failed:",e);}
+    if(!hosts.length){console.warn("No hosts found for dept:",department);return;}
+    
+    // Send to ALL hosts in the department (not just the named one)
+    for(const host of hosts){
+      const tokens=await sbGet("vms_fcm_tokens",`employee_id=eq.${host.employee_id}`);
+      console.log(`Tokens for ${host.name}:`,tokens.length);
+      if(!tokens.length)continue;
+      
+      const res=await fetch(`${SUPABASE_URL}/functions/v1/send-push`,{
+        method:"POST",
+        headers:{...HEADERS,"Content-Type":"application/json"},
+        body:JSON.stringify({
+          token:tokens[0].token,
+          title:"🏥 Visitor Waiting — Approval Required",
+          body:`${visitorName} is at reception to meet ${hostName}`,
+          data:{visitor_id:visitorId,type:"approval_request"}
+        })
+      });
+      const result=await res.json();
+      console.log("Push result:",result);
+    }
+  }catch(e){console.error("Push send failed:",e);}
 }
 
 // ─── Login Screen ─────────────────────────────────────────────────────────────
