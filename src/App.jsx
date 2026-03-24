@@ -1234,6 +1234,55 @@ function AdminApp({onLogout}){
   );
 }
 
+// ─── PWA Install Banner ───────────────────────────────────────────────────────
+function InstallBanner(){
+  const [prompt,setPrompt]=useState(null);
+  const [show,setShow]=useState(false);
+  const [installed,setInstalled]=useState(false);
+
+  useEffect(()=>{
+    // Check if already installed
+    if(window.matchMedia('(display-mode: standalone)').matches){
+      setInstalled(true);return;
+    }
+    // Listen for install prompt
+    window.addEventListener('beforeinstallprompt',e=>{
+      e.preventDefault();
+      setPrompt(e);
+      setShow(true);
+    });
+    window.addEventListener('appinstalled',()=>{
+      setInstalled(true);setShow(false);
+    });
+  },[]);
+
+  async function install(){
+    if(!prompt)return;
+    prompt.prompt();
+    const result=await prompt.userChoice;
+    if(result.outcome==='accepted'){setInstalled(true);setShow(false);}
+  }
+
+  if(installed||!show)return null;
+
+  return createPortal(
+    <div style={{position:'fixed',bottom:80,left:16,right:16,zIndex:99999,animation:'fadeUp .4s ease'}}>
+      <div style={{background:'#1a1a2e',borderRadius:16,padding:'14px 16px',display:'flex',alignItems:'center',gap:12,boxShadow:'0 8px 32px rgba(0,0,0,0.3)'}}>
+        <img src="/icon-192.png" alt="ABMH" style={{width:40,height:40,borderRadius:10,objectFit:'contain',background:'#fff',padding:4}}/>
+        <div style={{flex:1}}>
+          <p style={{color:'#fff',fontWeight:700,fontSize:13,lineHeight:1.2}}>Install ABMH VMS</p>
+          <p style={{color:'rgba(255,255,255,0.6)',fontSize:11,marginTop:2}}>Add to home screen for quick access</p>
+        </div>
+        <div style={{display:'flex',gap:8,flexShrink:0}}>
+          <button onClick={()=>setShow(false)} style={{background:'rgba(255,255,255,0.1)',border:'none',borderRadius:8,padding:'6px 10px',color:'rgba(255,255,255,0.7)',fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>Later</button>
+          <button onClick={install} style={{background:RED,border:'none',borderRadius:8,padding:'6px 12px',color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>Install</button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─── Root ──────────────────────────────────────────────────────────────────────
 export default function App(){
   const [user,setUser]=useState(()=>{
@@ -1254,9 +1303,11 @@ export default function App(){
   // Visitor pass page — no login needed
   if(passId) return<VisitorPassPage visitorId={passId}/>;
 
-  if(!user)return<LoginScreen onLogin={login}/>;
-  if(user.role==="reception")return<ReceptionApp onLogout={logout}/>;
-  if(user.role==="host")return<HostApp user={user} onLogout={logout}/>;
-  if(user.role==="admin")return<AdminApp onLogout={logout}/>;
-  return<LoginScreen onLogin={login}/>;
+  const content=!user?<LoginScreen onLogin={login}/>
+    :user.role==="reception"?<ReceptionApp onLogout={logout}/>
+    :user.role==="host"?<HostApp user={user} onLogout={logout}/>
+    :user.role==="admin"?<AdminApp onLogout={logout}/>
+    :<LoginScreen onLogin={login}/>;
+
+  return<>{content}<InstallBanner/></>;
 }
