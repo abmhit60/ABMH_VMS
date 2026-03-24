@@ -985,6 +985,23 @@ function HostApp({user,onLogout}){
   const [visitors,setVisitors]=useState([]);
   const [loading,setLoading]=useState(true);
   const [filter,setFilter]=useState("all");
+  const [notifStatus,setNotifStatus]=useState(Notification.permission); // granted | denied | default
+
+  async function enableNotifications(){
+    try{
+      const token=await initFCM();
+      if(token){
+        await saveFCMToken(user.empId,token);
+        setNotifStatus("granted");
+        alert("✅ Notifications enabled! You will be alerted when a visitor arrives.");
+      } else {
+        setNotifStatus(Notification.permission);
+        if(Notification.permission==="denied"){
+          alert("Notifications blocked. Please enable them in your browser/phone settings.");
+        }
+      }
+    }catch(e){alert("Could not enable notifications. Try again.");}
+  }
 
   async function load(){
     setLoading(true);
@@ -994,7 +1011,13 @@ function HostApp({user,onLogout}){
     }catch(e){}
     setLoading(false);
   }
-  useEffect(()=>{load();},[]);
+  useEffect(()=>{
+    load();
+    // Auto-request notification permission on load
+    if(Notification.permission==="default"){
+      setTimeout(()=>enableNotifications(),1500);
+    }
+  },[]);
 
   const filtered=filter==="all"?visitors:visitors.filter(v=>v.status===filter);
   const inside=visitors.filter(v=>v.status==="inside").length;
@@ -1009,6 +1032,12 @@ function HostApp({user,onLogout}){
             <p style={{color:"#9ca3af",fontSize:11}}>🏥 {user.dept}</p>
           </div>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            {notifStatus!=="granted"&&(
+              <button onClick={enableNotifications} style={{padding:"6px 10px",borderRadius:9,border:"1.5px solid #d97706",background:"#fffbeb",color:"#d97706",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔔 Enable Alerts</button>
+            )}
+            {notifStatus==="granted"&&(
+              <span style={{fontSize:11,color:"#16a34a",fontWeight:600}}>🔔 On</span>
+            )}
             <button onClick={load} style={{...BTN_GHOST,padding:"6px 10px"}}>↻</button>
             <button onClick={onLogout} style={{...BTN_GHOST,padding:"6px 10px",display:"flex",alignItems:"center",gap:4}}><LogOut size={14}/>Out</button>
           </div>
