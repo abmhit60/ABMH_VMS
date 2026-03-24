@@ -586,25 +586,32 @@ function LoginScreen({onLogin}){
       if(uid==="reception"&&pass===recPwd){onLogin({role:"reception",name:"Reception"});setLoading(false);return;}
 
       // 3. Check dept head from DB
-      const rows=await sbGet("vms_hosts",`employee_id=eq.${uid}`);
+      let rows=[];
+      try{
+        rows=await sbGet("vms_hosts",`employee_id=eq.${uid}`);
+      }catch(e){
+        setErr("Connection error. Check your internet and try again.");
+        setLoading(false);return;
+      }
       if(rows.length>0){
         const h=rows[0];
         const pwd=localStorage.getItem(`abmh_vms_host_${h.employee_id}`)||h.password;
         if(pass===pwd){
-            const u={role:"host",name:h.name,dept:h.department,empId:h.employee_id};
-            onLogin(u);
-            // Request push notification permission and save token
-            setTimeout(async()=>{
-              const token=await initFCM();
-              if(token) await saveFCMToken(h.employee_id,token);
-            },2000);
-            setLoading(false);return;
-          }
-        else{setErr("Incorrect password.");setLoading(false);return;}
+          const u={role:"host",name:h.name,dept:h.department,empId:h.employee_id};
+          onLogin(u);
+          setTimeout(async()=>{
+            const token=await initFCM();
+            if(token) await saveFCMToken(h.employee_id,token);
+          },2000);
+          setLoading(false);return;
+        } else {
+          setErr("Incorrect password.");setLoading(false);return;
+        }
       }
 
-      setErr("User not found. Please check your ID.");
-    }catch(e){setErr("Login failed. Please try again.");}
+      // Not found — show helpful message with what was queried
+      setErr(`User ID "${uid}" not found. Please check your Employee ID.`);
+    }catch(e){setErr("Login failed: "+e.message);}
     setLoading(false);
   }
 
