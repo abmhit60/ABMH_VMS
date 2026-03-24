@@ -466,75 +466,63 @@ function VisitorPassPage({visitorId}){
 
 // ─── Login Screen ─────────────────────────────────────────────────────────────
 function LoginScreen({onLogin}){
-  const [role,setRole]=useState("reception");
   const [user,setUser]=useState("");
   const [pass,setPass]=useState("");
   const [err,setErr]=useState("");
   const [loading,setLoading]=useState(false);
 
-  const CREDS={
-    reception:{id:"reception",password:"reception123",name:"Reception",role:"reception"},
-    admin:{id:"admin",password:"admin123",name:"Admin",role:"admin"},
-  };
-
   async function handleLogin(){
     setErr("");setLoading(true);
+    const uid=user.trim();
     try{
-      if(role==="reception"||role==="admin"){
-        const c=CREDS[role];
-        const pwd=localStorage.getItem(`abmh_vms_pwd_${role}`)||c.password;
-        if(user.trim()===c.id&&pass===pwd){
-          onLogin({role,name:c.name});
-        } else setErr("Invalid credentials");
-      } else {
-        // Dept head login — check hosts table
-        const rows=await sbGet("vms_hosts",`employee_id=eq.${user.trim()}&order=name.asc`);
-        if(rows.length>0){
-          const h=rows[0];
-          const pwd=localStorage.getItem(`abmh_vms_host_${h.employee_id}`)||h.password;
-          if(pass===pwd) onLogin({role:"host",name:h.name,dept:h.department,empId:h.employee_id});
-          else setErr("Invalid password");
-        } else setErr("Employee ID not found");
+      // 1. Check admin
+      const adminPwd=localStorage.getItem("abmh_vms_pwd_admin")||"admin123";
+      if(uid==="admin"&&pass===adminPwd){onLogin({role:"admin",name:"Admin"});setLoading(false);return;}
+
+      // 2. Check reception
+      const recPwd=localStorage.getItem("abmh_vms_pwd_reception")||"reception123";
+      if(uid==="reception"&&pass===recPwd){onLogin({role:"reception",name:"Reception"});setLoading(false);return;}
+
+      // 3. Check dept head from DB
+      const rows=await sbGet("vms_hosts",`employee_id=eq.${uid}`);
+      if(rows.length>0){
+        const h=rows[0];
+        const pwd=localStorage.getItem(`abmh_vms_host_${h.employee_id}`)||h.password;
+        if(pass===pwd){onLogin({role:"host",name:h.name,dept:h.department,empId:h.employee_id});setLoading(false);return;}
+        else{setErr("Incorrect password.");setLoading(false);return;}
       }
+
+      setErr("User not found. Please check your ID.");
     }catch(e){setErr("Login failed. Please try again.");}
     setLoading(false);
   }
 
   return(
     <div style={{minHeight:"100vh",background:"#f5f6fa",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-      <div className="fu" style={{width:"100%",maxWidth:400}}>
-        {/* Logo */}
+      <div className="fu" style={{width:"100%",maxWidth:380}}>
+        {/* Logo only — no duplicate text */}
         <div style={{textAlign:"center",marginBottom:28}}>
-          <img src="/abmh-logo-1.png" alt="ABMH" style={{height:48,objectFit:"contain",marginBottom:12}}/>
+          <img src="/abmh-logo-1.png" alt="ABMH" style={{height:52,objectFit:"contain",marginBottom:14}}/>
           <h1 style={{color:"#1a1a2e",fontSize:20,fontWeight:800}}>Visitor Management</h1>
-          <p style={{color:"#6b7280",fontSize:13,marginTop:4}}>Aditya Birla Memorial Hospital</p>
+          <p style={{color:"#9ca3af",fontSize:12,marginTop:4}}>Secure access for authorised staff</p>
         </div>
 
         <div style={{background:"#fff",borderRadius:20,padding:24,boxShadow:"0 4px 24px rgba(0,0,0,0.08)"}}>
-          {/* Role tabs */}
-          <div style={{display:"flex",gap:6,background:"#f3f4f6",borderRadius:10,padding:4,marginBottom:20}}>
-            {[["reception","🛡️ Reception"],["host","🏥 Dept Head"],["admin","⚙️ Admin"]].map(([r,l])=>(
-              <button key={r} onClick={()=>{setRole(r);setErr("");setUser("");setPass("");}}
-                style={{flex:1,padding:"8px 4px",borderRadius:7,border:"none",background:role===r?"#fff":"transparent",color:role===r?"#1a1a2e":"#6b7280",fontWeight:role===r?700:500,fontSize:11,cursor:"pointer",boxShadow:role===r?"0 1px 4px rgba(0,0,0,0.08)":"none",transition:"all .2s",fontFamily:"inherit"}}>
-                {l}
-              </button>
-            ))}
-          </div>
-
-          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div>
-              <p style={{color:"#6b7280",fontSize:11,fontWeight:600,marginBottom:4}}>{role==="host"?"EMPLOYEE ID":"USERNAME"}</p>
-              <input style={INP} placeholder={role==="host"?"Enter Employee ID":"Enter username"} value={user} onChange={e=>setUser(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()}/>
+              <p style={{color:"#6b7280",fontSize:11,fontWeight:700,marginBottom:5}}>USER ID</p>
+              <input style={INP} placeholder="Enter your User ID or Employee ID" value={user} onChange={e=>setUser(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()} autoComplete="username"/>
             </div>
             <div>
-              <p style={{color:"#6b7280",fontSize:11,fontWeight:600,marginBottom:4}}>PASSWORD</p>
-              <input style={INP} type="password" placeholder="Enter password" value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()}/>
+              <p style={{color:"#6b7280",fontSize:11,fontWeight:700,marginBottom:5}}>PASSWORD</p>
+              <input style={INP} type="password" placeholder="Enter password" value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()} autoComplete="current-password"/>
             </div>
             {err&&<ErrBox msg={err}/>}
             <button onClick={handleLogin} disabled={loading} style={{...BTN_PRIMARY,width:"100%",marginTop:4,opacity:loading?0.7:1}}>
-              {loading?"Logging in...":"Login →"}
+              {loading?"Verifying...":"Login →"}
             </button>
           </div>
+          <p style={{color:"#d1d5db",fontSize:11,textAlign:"center",marginTop:16}}>Role is detected automatically from your credentials</p>
         </div>
       </div>
     </div>
